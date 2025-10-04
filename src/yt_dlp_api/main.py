@@ -10,6 +10,11 @@ def read_health() -> Mapping[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/v1/video/{video_id}", summary="Retrieve video details", tags=["video"])
+def read_video(video_id: str) -> Mapping[str, str]:
+    raise NotImplementedError
+
+
 def main() -> None:
     import uvicorn
 
