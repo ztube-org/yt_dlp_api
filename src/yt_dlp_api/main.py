@@ -18,6 +18,7 @@ API_KEY = _raw_api_key.strip() if _raw_api_key and _raw_api_key.strip() else Non
 
 
 DESIRED_VIDEO_FORMAT_IDS: tuple[str, ...] = ("134", "135", "136", "137", "298", "299")
+DESIRED_M3U8_FORMAT_IDS: tuple[str, ...] = ("93", "94", "300", "301")
 DESIRED_AUDIO_FORMAT_ID = "140"
 
 
@@ -40,6 +41,7 @@ class VideoDetailResponse(BaseModel):
     uploader: str | None = None
     channel_id: str | None = None
     video_formats: Sequence[StreamInfo] = ()
+    m3u8_formats: Sequence[StreamInfo] = ()
     audio_format: StreamInfo | None = None
 
 
@@ -105,6 +107,7 @@ def fetch_video_info(video_id: str) -> VideoDetailResponse:
 
     formats = info.get("formats") or []
     selected_video_formats = _select_video_formats(formats)
+    selected_m3u8_formats = _select_m3u8_formats(formats)
     selected_audio_format = _select_audio_format(formats)
 
     return VideoDetailResponse(
@@ -114,6 +117,7 @@ def fetch_video_info(video_id: str) -> VideoDetailResponse:
         uploader=info.get("uploader"),
         channel_id=info.get("channel_id") or info.get("uploader_id"),
         video_formats=[_map_stream_info(fmt) for fmt in selected_video_formats],
+        m3u8_formats=[_map_stream_info(fmt) for fmt in selected_m3u8_formats],
         audio_format=_map_stream_info(selected_audio_format) if selected_audio_format else None,
     )
 
@@ -135,6 +139,19 @@ def _select_video_formats(formats: Sequence[Mapping[str, Any]]) -> list[Mapping[
         fmt = indexed_by_id.get(format_id)
         if fmt:
             selected.append(fmt)
+    return selected
+
+
+def _select_m3u8_formats(formats: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    selected: list[Mapping[str, Any]] = []
+    for fmt in formats:
+        format_id = fmt.get("format_id")
+        if not format_id or format_id not in DESIRED_M3U8_FORMAT_IDS:
+            continue
+        url = fmt.get("url")
+        if not isinstance(url, str) or not url.endswith(".m3u8"):
+            continue
+        selected.append(fmt)
     return selected
 
 

@@ -43,6 +43,13 @@ def api(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient, Any]]:
                     url=f"https://cdn.example.com/video/{video_id}",
                 )
             ],
+            m3u8_formats=[
+                module.StreamInfo(
+                    format_id="93",
+                    ext="mp4",
+                    url=f"https://cdn.example.com/hls/{video_id}.m3u8",
+                )
+            ],
             audio_format=module.StreamInfo(
                 format_id="140",
                 ext="m4a",
@@ -119,6 +126,8 @@ def test_video_endpoint_returns_payload(api: tuple[TestClient, Any]) -> None:
     assert payload["id"] == "abc123"
     assert payload["title"] == "Video-abc123"
     assert payload["video_formats"][0]["format_id"] == "136"
+    assert payload["m3u8_formats"][0]["format_id"] == "93"
+    assert payload["m3u8_formats"][0]["url"].endswith(".m3u8")
     assert payload["audio_format"]["format_id"] == "140"
 
 
@@ -138,6 +147,7 @@ def test_force_reload_bypasses_video_cache(api: tuple[TestClient, Any], monkeypa
             uploader="New Uploader",
             channel_id="new-channel",
             video_formats=[],
+            m3u8_formats=[],
             audio_format=None,
         )
 
