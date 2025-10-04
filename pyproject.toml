@@ -9,16 +9,17 @@ dependencies = [
     "yt-dlp>=2025.9.26",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-    "ruff",
-    "basedpyright",
+    "pytest>=8.4.2",
 ]
 
 [tool.ruff]
 line-length = 100
-select = ["E", "F", "I", "UP", "B"]
 target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -32,3 +33,12 @@ include = ["main.py"]
 reportMissingImports = "warning"
 venvPath = "."
 venv = ".venv"
+
+[tool.pyprojectx]
+main = ["ruff", "basedpyright"]
+
+[tool.pyprojectx.aliases]
+dev = "uv run fastapi dev main.py"
+test = "uv run pytest main.py"
+format = "ruff check main.py"
+
