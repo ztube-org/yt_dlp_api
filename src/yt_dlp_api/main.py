@@ -73,7 +73,7 @@ PLAYLIST_INFO_CACHE = TTLCache(maxsize=256, ttl=1800)
 
 
 @app.get("/health", summary="Health check", tags=["system"])
-def read_health(_: None = Depends(enforce_api_key)) -> Mapping[str, str]:
+def read_health() -> Mapping[str, str]:
     return {"status": "ok"}
 
 
