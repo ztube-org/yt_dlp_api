@@ -38,7 +38,9 @@ venv = ".venv"
 main = ["ruff", "basedpyright"]
 
 [tool.pyprojectx.aliases]
-dev = "uv run fastapi dev main.py"
-test = "uv run pytest main.py"
-format = "ruff check main.py"
+dev = "uv run fastapi dev src/yt_dlp_api/main.py"
+test = "uv run pytest src/yt_dlp_api/main.py"
+format = "ruff format src/"
+lint = "ruff check src/"
+typecheck = "basedpyright src/"
 
