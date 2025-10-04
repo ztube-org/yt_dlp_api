@@ -1,15 +1,28 @@
 import asyncio
+import os
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
 from asyncache import cached
 from cachetools import TTLCache
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
 app = FastAPI(title="yt-dlp API", version="0.1.0")
+
+_raw_api_key = os.getenv("YT_DLP_API_KEY")
+API_KEY = _raw_api_key.strip() if _raw_api_key and _raw_api_key.strip() else None
+
+
+async def enforce_api_key(authorization: str | None = Header(default=None)) -> None:
+    if API_KEY is None:
+        return
+    if authorization == API_KEY:
+        return
+    raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
 
 DESIRED_VIDEO_FORMAT_IDS: tuple[str, ...] = ("134", "135", "136", "137", "298", "299")
 DESIRED_AUDIO_FORMAT_ID = "140"
@@ -60,7 +73,7 @@ PLAYLIST_INFO_CACHE = TTLCache(maxsize=256, ttl=1800)
 
 
 @app.get("/health", summary="Health check", tags=["system"])
-def read_health() -> Mapping[str, str]:
+def read_health(_: None = Depends(enforce_api_key)) -> Mapping[str, str]:
     return {"status": "ok"}
 
 
@@ -136,18 +149,14 @@ def _map_stream_info(fmt: Mapping[str, Any]) -> StreamInfo:
     )
 
 
-def _video_cache_key(video_id: str) -> str:
-    return video_id
-
-
-@cached(cache=VIDEO_INFO_CACHE, key=_video_cache_key)
+@cached(cache=VIDEO_INFO_CACHE, key=lambda video_id: video_id)
 async def _fetch_video_info_cached(video_id: str) -> VideoDetailResponse:
     return await asyncio.to_thread(fetch_video_info, video_id)
 
 
 async def fetch_video_info_cached(video_id: str, *, force_reload: bool = False) -> VideoDetailResponse:
     if force_reload:
-        VIDEO_INFO_CACHE.pop(_video_cache_key(video_id), None)
+        VIDEO_INFO_CACHE.pop(video_id, None)
         return await asyncio.to_thread(fetch_video_info, video_id)
 
     result = await _fetch_video_info_cached(video_id)
@@ -213,18 +222,14 @@ async def _build_playlist_response(playlist_id: str) -> PlaylistDetailResponse:
     )
 
 
-def _playlist_cache_key(playlist_id: str) -> str:
-    return playlist_id
-
-
-@cached(cache=PLAYLIST_INFO_CACHE, key=_playlist_cache_key)
+@cached(cache=PLAYLIST_INFO_CACHE, key=lambda playlist_id: playlist_id)
 async def _fetch_playlist_info_cached(playlist_id: str) -> PlaylistDetailResponse:
     return await _build_playlist_response(playlist_id)
 
 
 async def fetch_playlist_info_cached(playlist_id: str, *, force_reload: bool = False) -> PlaylistDetailResponse:
     if force_reload:
-        PLAYLIST_INFO_CACHE.pop(_playlist_cache_key(playlist_id), None)
+        PLAYLIST_INFO_CACHE.pop(playlist_id, None)
         return await _build_playlist_response(playlist_id)
 
     result = await _fetch_playlist_info_cached(playlist_id)
@@ -234,7 +239,9 @@ async def fetch_playlist_info_cached(playlist_id: str, *, force_reload: bool = F
 
 
 @app.get("/v1/video/{video_id}", summary="Retrieve video details", tags=["video"])
-async def read_video(video_id: str, force_reload: bool = False) -> VideoDetailResponse:
+async def read_video(
+    video_id: str, force_reload: bool = False, _: None = Depends(enforce_api_key)
+) -> VideoDetailResponse:
     try:
         return await fetch_video_info_cached(video_id, force_reload=force_reload)
     except DownloadError as exc:
@@ -248,7 +255,9 @@ async def read_video(video_id: str, force_reload: bool = False) -> VideoDetailRe
     summary="Retrieve playlist video details",
     tags=["playlist"],
 )
-async def read_playlist(playlist_id: str, force_reload: bool = False) -> PlaylistDetailResponse:
+async def read_playlist(
+    playlist_id: str, force_reload: bool = False, _: None = Depends(enforce_api_key)
+) -> PlaylistDetailResponse:
     try:
         return await fetch_playlist_info_cached(playlist_id, force_reload=force_reload)
     except DownloadError as exc:
