@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
@@ -39,7 +37,7 @@ class VideoDetailResponse(BaseModel):
     audio_format: StreamInfo | None = None
 
 
-VIDEO_INFO_CACHE = TTLCache(maxsize=1024, ttl=600)
+VIDEO_INFO_CACHE = TTLCache(maxsize=1024, ttl=3600)
 
 
 @app.get("/health", summary="Health check", tags=["system"])
