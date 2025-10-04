@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Cache pyprojectx environment
+        uses: actions/cache@v4
+        with:
+          path: .pyprojectx
+          key: ${{ runner.os }}-pyprojectx-${{ hashFiles('pyproject.toml', 'pw.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pyprojectx-
+
+      - name: Run lint
+        run: ./pw lint
+
+      - name: Run tests
+        run: ./pw test
