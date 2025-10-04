@@ -4,13 +4,21 @@ A FastAPI-based service that surfaces selected `yt-dlp` capabilities over HTTP.
 
 ## Running the API Server
 
-Launch the development server with auto-reload enabled:
+This project uses [pyprojectx](https://github.com/pyprojectx/pyprojectx) for repeatable developer workflows. After installing pyprojectx (`pip install pyprojectx`), use the bundled aliases:
+
+```bash
+px dev      # fastapi dev server with auto-reload
+px test     # run pytest suite
+px format   # apply ruff formatting
+px lint     # run ruff lint checks
+px typecheck  # run basedpyright static analysis
+```
+
+The `px dev` command launches the API at `http://127.0.0.1:8000` by default. You can still invoke the underlying commands directly if preferred:
 
 ```bash
 uv run fastapi dev src/yt_dlp_api/main.py
 ```
-
-The application binds to `http://127.0.0.1:8000` by default.
 
 ## Authentication
 
