@@ -2,29 +2,11 @@
 
 A FastAPI-based service prepared to expose functionality powered by `yt-dlp`.
 
-## Getting Started
-
-1. Create and activate a virtual environment (optional but recommended):
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   ```
-2. Install the project with runtime and development dependencies:
-   ```bash
-   pip install -e ".[dev]"
-   ```
-
 ## Running the API Server
 
 Launch the development server with auto-reload enabled:
 ```bash
-uvicorn main:app --reload
-```
-The application exposes a basic health-check endpoint at `GET /health` that responds with `{"status": "ok"}`.
-
-You can also start the server via the module entry point:
-```bash
-python -m main
+uv run fastapi dev main.py
 ```
 
 ## Tooling
