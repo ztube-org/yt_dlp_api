@@ -32,6 +32,7 @@ class VideoDetailResponse(BaseModel):
     title: str
     duration: int | None = None
     uploader: str | None = None
+    channel_id: str | None = None
     video_formats: Sequence[StreamInfo] = ()
     audio_format: StreamInfo | None = None
 
@@ -107,6 +108,7 @@ def fetch_video_info(video_id: str) -> VideoDetailResponse:
         title=info.get("title") or "",
         duration=info.get("duration"),
         uploader=info.get("uploader"),
+        channel_id=info.get("channel_id") or info.get("uploader_id"),
         video_formats=[_map_stream_info(fmt) for fmt in selected_video_formats],
         audio_format=_map_stream_info(selected_audio_format) if selected_audio_format else None,
     )
