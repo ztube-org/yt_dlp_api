@@ -1,8 +1,31 @@
 # yt-dlp-api
 
+[![CI](https://github.com/ztube-org/yt_dlp_api/actions/workflows/ci.yml/badge.svg)](https://github.com/ztube-org/yt_dlp_api/actions/workflows/ci.yml)
+[![Publish Docker image](https://github.com/ztube-org/yt_dlp_api/actions/workflows/docker.yml/badge.svg)](https://github.com/ztube-org/yt_dlp_api/actions/workflows/docker.yml)
+[![Container](https://ghcr-badge.egpl.dev/ztube-org/yt_dlp_api/latest_tag?label=ghcr.io%2Fztube-org%2Fyt_dlp_api)](https://ghcr.io/ztube-org/yt_dlp_api)
+
 A FastAPI-based service that surfaces selected `yt-dlp` capabilities over HTTP.
 
 ## Running the API Server
+
+### Using Docker
+
+The project publishes an image to GitHub Container Registry under `ghcr.io/ztube-org/yt_dlp_api`. Pull and start it with:
+
+```bash
+docker pull ghcr.io/ztube-org/yt_dlp_api:latest
+docker run --rm -p 8000:8000 ghcr.io/ztube-org/yt_dlp_api:latest
+```
+
+You can set `YT_DLP_API_KEY` at runtime to require clients to present an API key:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e YT_DLP_API_KEY="super-secret-key" \
+  ghcr.io/ztube-org/yt_dlp_api:latest
+```
+
+### Local Development
 
 This project uses [pyprojectx](https://github.com/pyprojectx/pyprojectx) for repeatable developer workflows. After installing pyprojectx (`pip install pyprojectx`), use the bundled aliases:
 
