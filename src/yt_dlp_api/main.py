@@ -18,7 +18,7 @@ API_KEY = _raw_api_key.strip() if _raw_api_key and _raw_api_key.strip() else Non
 
 
 DESIRED_VIDEO_FORMAT_IDS: tuple[str, ...] = ("134", "135", "136", "137", "298", "299")
-DESIRED_M3U8_FORMAT_IDS: tuple[str, ...] = ("93", "94", "300", "301")
+DESIRED_M3U8_FORMAT_IDS: tuple[str, ...] = ("93", "94", "95", "96", "300", "301")
 DESIRED_AUDIO_FORMAT_ID = "140"
 
 
