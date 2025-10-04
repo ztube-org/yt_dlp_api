@@ -5,7 +5,8 @@ from typing import Any, cast
 
 from asyncache import cached
 from cachetools import TTLCache
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
@@ -14,14 +15,6 @@ app = FastAPI(title="yt-dlp API", version="0.1.0")
 
 _raw_api_key = os.getenv("YT_DLP_API_KEY")
 API_KEY = _raw_api_key.strip() if _raw_api_key and _raw_api_key.strip() else None
-
-
-async def enforce_api_key(authorization: str | None = Header(default=None)) -> None:
-    if API_KEY is None:
-        return
-    if authorization == API_KEY:
-        return
-    raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 DESIRED_VIDEO_FORMAT_IDS: tuple[str, ...] = ("134", "135", "136", "137", "298", "299")
@@ -69,6 +62,17 @@ class PlaylistDetailResponse(BaseModel):
 
 VIDEO_INFO_CACHE = TTLCache(maxsize=1024, ttl=3600)
 PLAYLIST_INFO_CACHE = TTLCache(maxsize=1024, ttl=1800)
+
+
+API_KEY_HEADER = APIKeyHeader(name="Authorization", auto_error=False)
+
+
+async def enforce_api_key(authorization: str | None = Security(API_KEY_HEADER)) -> None:
+    if API_KEY is None:
+        return
+    if authorization == API_KEY:
+        return
+    raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 @app.get("/health", summary="Health check", tags=["system"])

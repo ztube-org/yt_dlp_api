@@ -1,0 +1,7 @@
+services:
+  yt-dlp-api:
+    image: ghcr.io/ztube-org/yt_dlp_api:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - YT_DLP_API_KEY=${YT_DLP_API_KEY:-}
