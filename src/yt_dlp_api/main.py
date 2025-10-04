@@ -136,12 +136,20 @@ def _map_stream_info(fmt: Mapping[str, Any]) -> StreamInfo:
     )
 
 
-@cached(cache=VIDEO_INFO_CACHE, key=lambda video_id: video_id)
+def _video_cache_key(video_id: str) -> str:
+    return video_id
+
+
+@cached(cache=VIDEO_INFO_CACHE, key=_video_cache_key)
 async def _fetch_video_info_cached(video_id: str) -> VideoDetailResponse:
     return await asyncio.to_thread(fetch_video_info, video_id)
 
 
-async def fetch_video_info_cached(video_id: str) -> VideoDetailResponse:
+async def fetch_video_info_cached(video_id: str, *, force_reload: bool = False) -> VideoDetailResponse:
+    if force_reload:
+        VIDEO_INFO_CACHE.pop(_video_cache_key(video_id), None)
+        return await asyncio.to_thread(fetch_video_info, video_id)
+
     result = await _fetch_video_info_cached(video_id)
     if not result.video_formats and result.audio_format is None:
         VIDEO_INFO_CACHE.pop(video_id, None)
@@ -205,12 +213,20 @@ async def _build_playlist_response(playlist_id: str) -> PlaylistDetailResponse:
     )
 
 
-@cached(cache=PLAYLIST_INFO_CACHE, key=lambda playlist_id: playlist_id)
+def _playlist_cache_key(playlist_id: str) -> str:
+    return playlist_id
+
+
+@cached(cache=PLAYLIST_INFO_CACHE, key=_playlist_cache_key)
 async def _fetch_playlist_info_cached(playlist_id: str) -> PlaylistDetailResponse:
     return await _build_playlist_response(playlist_id)
 
 
-async def fetch_playlist_info_cached(playlist_id: str) -> PlaylistDetailResponse:
+async def fetch_playlist_info_cached(playlist_id: str, *, force_reload: bool = False) -> PlaylistDetailResponse:
+    if force_reload:
+        PLAYLIST_INFO_CACHE.pop(_playlist_cache_key(playlist_id), None)
+        return await _build_playlist_response(playlist_id)
+
     result = await _fetch_playlist_info_cached(playlist_id)
     if not result.videos:
         PLAYLIST_INFO_CACHE.pop(playlist_id, None)
@@ -218,9 +234,9 @@ async def fetch_playlist_info_cached(playlist_id: str) -> PlaylistDetailResponse
 
 
 @app.get("/v1/video/{video_id}", summary="Retrieve video details", tags=["video"])
-async def read_video(video_id: str) -> VideoDetailResponse:
+async def read_video(video_id: str, force_reload: bool = False) -> VideoDetailResponse:
     try:
-        return await fetch_video_info_cached(video_id)
+        return await fetch_video_info_cached(video_id, force_reload=force_reload)
     except DownloadError as exc:
         raise HTTPException(status_code=404, detail="Video not found or unavailable") from exc
     except Exception as exc:  # pragma: no cover - unexpected failures
@@ -232,9 +248,9 @@ async def read_video(video_id: str) -> VideoDetailResponse:
     summary="Retrieve playlist video details",
     tags=["playlist"],
 )
-async def read_playlist(playlist_id: str) -> PlaylistDetailResponse:
+async def read_playlist(playlist_id: str, force_reload: bool = False) -> PlaylistDetailResponse:
     try:
-        return await fetch_playlist_info_cached(playlist_id)
+        return await fetch_playlist_info_cached(playlist_id, force_reload=force_reload)
     except DownloadError as exc:
         raise HTTPException(status_code=404, detail="Playlist not found or unavailable") from exc
     except Exception as exc:  # pragma: no cover - unexpected failures
