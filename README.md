@@ -34,11 +34,20 @@ All endpoints support an optional `force_reload` query parameter (default `false
 ### `GET /health`
 
 - **Tags:** `system`
-- **Description:** Returns a basic service status payload. This endpoint never requires an API key.
+- **Description:** Returns service status plus cache statistics. This endpoint never requires an API key.
 
 Example:
 ```bash
 curl http://127.0.0.1:8000/health
+```
+
+Sample response body:
+```json
+{
+  "status": "ok",
+  "video_cache": {"size": 12, "maxsize": 1024, "ttl_seconds": 3600},
+  "playlist_cache": {"size": 3, "maxsize": 256, "ttl_seconds": 1800}
+}
 ```
 
 ### `GET /v1/video/{video_id}`

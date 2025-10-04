@@ -69,12 +69,24 @@ class PlaylistDetailResponse(BaseModel):
 
 
 VIDEO_INFO_CACHE = TTLCache(maxsize=1024, ttl=3600)
-PLAYLIST_INFO_CACHE = TTLCache(maxsize=256, ttl=1800)
+PLAYLIST_INFO_CACHE = TTLCache(maxsize=1024, ttl=1800)
 
 
 @app.get("/health", summary="Health check", tags=["system"])
-def read_health() -> Mapping[str, str]:
-    return {"status": "ok"}
+def read_health() -> Mapping[str, Any]:
+    return {
+        "status": "ok",
+        "video_cache": {
+            "size": len(VIDEO_INFO_CACHE),
+            "maxsize": VIDEO_INFO_CACHE.maxsize,
+            "ttl_seconds": VIDEO_INFO_CACHE.ttl,
+        },
+        "playlist_cache": {
+            "size": len(PLAYLIST_INFO_CACHE),
+            "maxsize": PLAYLIST_INFO_CACHE.maxsize,
+            "ttl_seconds": PLAYLIST_INFO_CACHE.ttl,
+        },
+    }
 
 
 def fetch_video_info(video_id: str) -> VideoDetailResponse:
