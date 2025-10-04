@@ -36,7 +36,7 @@ venvPath = "."
 venv = ".venv"
 
 [tool.pyprojectx]
-main = ["ruff", "basedpyright"]
+main = ["ruff", "basedpyright", "uv"]
 
 [tool.pyprojectx.aliases]
 dev = "uv run fastapi dev src/yt_dlp_api/main.py"
