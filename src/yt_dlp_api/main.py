@@ -4,6 +4,8 @@ import asyncio
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
+from asyncache import cached
+from cachetools import TTLCache
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from yt_dlp import YoutubeDL
@@ -35,6 +37,9 @@ class VideoDetailResponse(BaseModel):
     channel_id: str | None = None
     video_formats: Sequence[StreamInfo] = ()
     audio_format: StreamInfo | None = None
+
+
+VIDEO_INFO_CACHE = TTLCache(maxsize=1024, ttl=600)
 
 
 @app.get("/health", summary="Health check", tags=["system"])
@@ -114,10 +119,22 @@ def fetch_video_info(video_id: str) -> VideoDetailResponse:
     )
 
 
+@cached(cache=VIDEO_INFO_CACHE, key=lambda video_id: video_id)
+async def _fetch_video_info_cached(video_id: str) -> VideoDetailResponse:
+    return await asyncio.to_thread(fetch_video_info, video_id)
+
+
+async def fetch_video_info_cached(video_id: str) -> VideoDetailResponse:
+    result = await _fetch_video_info_cached(video_id)
+    if not result.video_formats and result.audio_format is None:
+        VIDEO_INFO_CACHE.pop(video_id, None)
+    return result
+
+
 @app.get("/v1/video/{video_id}", summary="Retrieve video details", tags=["video"])
 async def read_video(video_id: str) -> VideoDetailResponse:
     try:
-        return await asyncio.to_thread(fetch_video_info, video_id)
+        return await fetch_video_info_cached(video_id)
     except DownloadError as exc:
         raise HTTPException(status_code=404, detail="Video not found or unavailable") from exc
     except Exception as exc:  # pragma: no cover - unexpected failures

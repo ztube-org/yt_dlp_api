@@ -5,6 +5,7 @@ description = "FastAPI service exposing yt-dlp functionality"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "asyncache>=0.3.1",
     "fastapi[standard]",
     "yt-dlp>=2025.9.26",
 ]
