@@ -67,7 +67,6 @@ class PlaylistDetailResponse(BaseModel):
     videos: Sequence[PlaylistVideoSummary] = ()
 
 
-
 VIDEO_INFO_CACHE = TTLCache(maxsize=1024, ttl=3600)
 PLAYLIST_INFO_CACHE = TTLCache(maxsize=1024, ttl=1800)
 
@@ -166,7 +165,9 @@ async def _fetch_video_info_cached(video_id: str) -> VideoDetailResponse:
     return await asyncio.to_thread(fetch_video_info, video_id)
 
 
-async def fetch_video_info_cached(video_id: str, *, force_reload: bool = False) -> VideoDetailResponse:
+async def fetch_video_info_cached(
+    video_id: str, *, force_reload: bool = False
+) -> VideoDetailResponse:
     if force_reload:
         VIDEO_INFO_CACHE.pop(video_id, None)
         return await asyncio.to_thread(fetch_video_info, video_id)
@@ -239,7 +240,9 @@ async def _fetch_playlist_info_cached(playlist_id: str) -> PlaylistDetailRespons
     return await _build_playlist_response(playlist_id)
 
 
-async def fetch_playlist_info_cached(playlist_id: str, *, force_reload: bool = False) -> PlaylistDetailResponse:
+async def fetch_playlist_info_cached(
+    playlist_id: str, *, force_reload: bool = False
+) -> PlaylistDetailResponse:
     if force_reload:
         PLAYLIST_INFO_CACHE.pop(playlist_id, None)
         return await _build_playlist_response(playlist_id)
@@ -275,7 +278,9 @@ async def read_playlist(
     except DownloadError as exc:
         raise HTTPException(status_code=404, detail="Playlist not found or unavailable") from exc
     except Exception as exc:  # pragma: no cover - unexpected failures
-        raise HTTPException(status_code=500, detail="Failed to retrieve playlist information") from exc
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve playlist information"
+        ) from exc
 
 
 def main() -> None:
