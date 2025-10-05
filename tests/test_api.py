@@ -5,6 +5,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -127,7 +128,17 @@ def test_video_endpoint_returns_payload(api: tuple[TestClient, Any]) -> None:
     assert payload["title"] == "Video-abc123"
     assert payload["video_formats"][0]["format_id"] == "136"
     assert payload["m3u8_formats"][0]["format_id"] == "93"
-    assert payload["m3u8_formats"][0]["url"].endswith(".m3u8")
+    proxied_url = payload["m3u8_formats"][0]["proxied_url"]
+    original_url = payload["m3u8_formats"][0]["url"]
+    assert original_url.endswith(".m3u8")
+    assert proxied_url is not None
+
+    parsed = urlparse(proxied_url)
+    assert parsed.scheme == "http"
+    assert parsed.netloc == "testserver"
+    assert parsed.path == "/m3u8_proxy"
+    assert parse_qs(parsed.query)["url"] == [original_url]
+
     assert payload["audio_format"]["format_id"] == "140"
 
 
@@ -182,6 +193,7 @@ def test_m3u8_proxy_validates_extension(api: tuple[TestClient, Any]) -> None:
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "Query parameter 'url' must end with .m3u8"
+    assert response.headers["access-control-allow-origin"] == "*"
 
 
 def test_m3u8_proxy_returns_upstream_content(
@@ -221,5 +233,15 @@ def test_m3u8_proxy_returns_upstream_content(
     )
 
     assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert response.headers["access-control-allow-methods"] == "GET,OPTIONS"
     assert response.text == expected_body
     assert fake_client.requested_url == "https://cdn.example.com/stream.m3u8"
+
+
+def test_m3u8_proxy_options_includes_cors_headers(api: tuple[TestClient, Any]) -> None:
+    client, _ = api
+    response = client.options("/m3u8_proxy")
+    assert response.status_code == 204
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert response.headers["access-control-allow-methods"] == "GET,OPTIONS"

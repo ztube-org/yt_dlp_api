@@ -2,12 +2,12 @@ import asyncio
 import os
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import httpx
 from asyncache import cached
 from cachetools import TTLCache
-from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.responses import Response
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
@@ -25,6 +25,13 @@ DESIRED_M3U8_FORMAT_IDS: tuple[str, ...] = ("93", "94", "95", "96", "300", "301"
 DESIRED_AUDIO_FORMAT_ID = "140"
 
 
+_M3U8_PROXY_CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "*",
+    "Access-Control-Allow-Methods": "GET,OPTIONS",
+}
+
+
 class StreamInfo(BaseModel):
     format_id: str
     ext: str
@@ -35,6 +42,7 @@ class StreamInfo(BaseModel):
     bitrate: float | None = None
     filesize: int | None = None
     filesize_approx: int | None = None
+    proxied_url: str | None = None
 
 
 class VideoDetailResponse(BaseModel):
@@ -277,46 +285,78 @@ async def fetch_playlist_info_cached(
     return result
 
 
+@app.options("/m3u8_proxy", tags=["video"])
+async def proxy_m3u8_options() -> Response:
+    response = Response(status_code=204)
+    response.headers.update(_M3U8_PROXY_CORS_HEADERS)
+    return response
+
+
 @app.get("/m3u8_proxy", summary="Proxy m3u8 playlists", tags=["video"])
 async def proxy_m3u8(url: str) -> Response:
     if not url.lower().endswith(".m3u8"):
-        raise HTTPException(status_code=400, detail="Query parameter 'url' must end with .m3u8")
+        raise HTTPException(
+            status_code=400,
+            detail="Query parameter 'url' must end with .m3u8",
+            headers=_M3U8_PROXY_CORS_HEADERS.copy(),
+        )
 
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise HTTPException(
             status_code=400,
             detail="Query parameter 'url' must be an absolute http(s) URL",
+            headers=_M3U8_PROXY_CORS_HEADERS.copy(),
         )
 
     try:
         async with httpx.AsyncClient() as client:
             upstream_response = await client.get(url)
     except httpx.RequestError as exc:
-        raise HTTPException(status_code=502, detail="Failed to retrieve m3u8 content") from exc
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to retrieve m3u8 content",
+            headers=_M3U8_PROXY_CORS_HEADERS.copy(),
+        ) from exc
 
     if upstream_response.status_code >= 400:
         raise HTTPException(
             status_code=upstream_response.status_code,
             detail="Upstream server responded with an error",
+            headers=_M3U8_PROXY_CORS_HEADERS.copy(),
         )
 
     media_type = upstream_response.headers.get(
         "content-type", "application/vnd.apple.mpegurl"
     )
-    return Response(content=upstream_response.content, media_type=media_type)
+    response = Response(content=upstream_response.content, media_type=media_type)
+    response.headers.update(_M3U8_PROXY_CORS_HEADERS)
+    return response
 
 
 @app.get("/v1/video/{video_id}", summary="Retrieve video details", tags=["video"])
 async def read_video(
-    video_id: str, force_reload: bool = False, _: None = Depends(enforce_api_key)
+    video_id: str,
+    request: Request,
+    force_reload: bool = False,
+    _: None = Depends(enforce_api_key),
 ) -> VideoDetailResponse:
     try:
-        return await fetch_video_info_cached(video_id, force_reload=force_reload)
+        base_response = await fetch_video_info_cached(video_id, force_reload=force_reload)
     except DownloadError as exc:
         raise HTTPException(status_code=404, detail="Video not found or unavailable") from exc
     except Exception as exc:  # pragma: no cover - unexpected failures
         raise HTTPException(status_code=500, detail="Failed to retrieve video information") from exc
+
+    response = base_response.model_copy(deep=True)
+    proxy_base_url = str(request.url_for("proxy_m3u8"))
+    for stream in response.m3u8_formats:
+        stream_url = stream.url
+        if not stream_url:
+            continue
+        stream.proxied_url = f"{proxy_base_url}?url={quote(stream_url, safe='')}"
+
+    return response
 
 
 @app.get(
