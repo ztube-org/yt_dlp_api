@@ -2,7 +2,7 @@ import asyncio
 import os
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import httpx
 from asyncache import cached
@@ -25,7 +25,7 @@ DESIRED_M3U8_FORMAT_IDS: tuple[str, ...] = ("93", "94", "95", "96", "300", "301"
 DESIRED_AUDIO_FORMAT_ID = "140"
 
 
-_M3U8_PROXY_CORS_HEADERS = {
+_PROXY_CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "*",
     "Access-Control-Allow-Methods": "GET,OPTIONS",
@@ -285,20 +285,20 @@ async def fetch_playlist_info_cached(
     return result
 
 
-@app.options("/m3u8_proxy", tags=["video"])
+@app.options("/m3u8_proxy", tags=["video"], name="proxy_m3u8_options")
 async def proxy_m3u8_options() -> Response:
     response = Response(status_code=204)
-    response.headers.update(_M3U8_PROXY_CORS_HEADERS)
+    response.headers.update(_PROXY_CORS_HEADERS)
     return response
 
 
-@app.get("/m3u8_proxy", summary="Proxy m3u8 playlists", tags=["video"])
-async def proxy_m3u8(url: str) -> Response:
+@app.get("/m3u8_proxy", summary="Proxy m3u8 playlists", tags=["video"], name="proxy_m3u8")
+async def proxy_m3u8(url: str, request: Request) -> Response:
     if not url.lower().endswith(".m3u8"):
         raise HTTPException(
             status_code=400,
             detail="Query parameter 'url' must end with .m3u8",
-            headers=_M3U8_PROXY_CORS_HEADERS.copy(),
+            headers=_PROXY_CORS_HEADERS.copy(),
         )
 
     parsed = urlparse(url)
@@ -306,7 +306,7 @@ async def proxy_m3u8(url: str) -> Response:
         raise HTTPException(
             status_code=400,
             detail="Query parameter 'url' must be an absolute http(s) URL",
-            headers=_M3U8_PROXY_CORS_HEADERS.copy(),
+            headers=_PROXY_CORS_HEADERS.copy(),
         )
 
     try:
@@ -316,21 +316,85 @@ async def proxy_m3u8(url: str) -> Response:
         raise HTTPException(
             status_code=502,
             detail="Failed to retrieve m3u8 content",
-            headers=_M3U8_PROXY_CORS_HEADERS.copy(),
+            headers=_PROXY_CORS_HEADERS.copy(),
         ) from exc
 
     if upstream_response.status_code >= 400:
         raise HTTPException(
             status_code=upstream_response.status_code,
             detail="Upstream server responded with an error",
-            headers=_M3U8_PROXY_CORS_HEADERS.copy(),
+            headers=_PROXY_CORS_HEADERS.copy(),
         )
+
+    playlist_text = upstream_response.text
+    proxy_segment_base = str(request.url_for("proxy_segment"))
+    upstream_final_url = str(upstream_response.url)
+    rewritten_lines: list[str] = []
+    for original_line in playlist_text.splitlines():
+        stripped = original_line.strip()
+        if stripped and not stripped.startswith("#"):
+            absolute_url = urljoin(upstream_final_url, stripped)
+            proxied_segment = f"{proxy_segment_base}?url={quote(absolute_url, safe='')}"
+            rewritten_lines.append(proxied_segment)
+        else:
+            rewritten_lines.append(original_line)
+    rewritten_body = "\n".join(rewritten_lines)
+    if playlist_text.endswith("\n"):
+        rewritten_body += "\n"
 
     media_type = upstream_response.headers.get(
         "content-type", "application/vnd.apple.mpegurl"
     )
+    response = Response(content=rewritten_body, media_type=media_type)
+    response.headers.update(_PROXY_CORS_HEADERS)
+    return response
+
+
+@app.options("/seg_proxy", tags=["video"], name="proxy_segment_options")
+async def proxy_segment_options() -> Response:
+    response = Response(status_code=204)
+    response.headers.update(_PROXY_CORS_HEADERS)
+    return response
+
+
+@app.get("/seg_proxy", summary="Proxy HLS segments", tags=["video"], name="proxy_segment")
+async def proxy_segment(url: str) -> Response:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(
+            status_code=400,
+            detail="Query parameter 'url' must be an absolute http(s) URL",
+            headers=_PROXY_CORS_HEADERS.copy(),
+        )
+
+    hostname = parsed.hostname or ""
+    if not hostname.endswith("googlevideo.com"):
+        raise HTTPException(
+            status_code=400,
+            detail="Segments may only be proxied from googlevideo.com",
+            headers=_PROXY_CORS_HEADERS.copy(),
+        )
+
+    try:
+        async with httpx.AsyncClient() as client:
+            upstream_response = await client.get(url)
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to retrieve segment content",
+            headers=_PROXY_CORS_HEADERS.copy(),
+        ) from exc
+
+    if upstream_response.status_code >= 400:
+        raise HTTPException(
+            status_code=upstream_response.status_code,
+            detail="Upstream server responded with an error",
+            headers=_PROXY_CORS_HEADERS.copy(),
+        )
+
+    media_type = upstream_response.headers.get("content-type", "video/MP2T")
     response = Response(content=upstream_response.content, media_type=media_type)
-    response.headers.update(_M3U8_PROXY_CORS_HEADERS)
+    response.headers.update(_PROXY_CORS_HEADERS)
     return response
 
 

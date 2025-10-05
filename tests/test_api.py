@@ -196,18 +196,24 @@ def test_m3u8_proxy_validates_extension(api: tuple[TestClient, Any]) -> None:
     assert response.headers["access-control-allow-origin"] == "*"
 
 
-def test_m3u8_proxy_returns_upstream_content(
+def test_m3u8_proxy_rewrites_segments(
     api: tuple[TestClient, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, module = api
-    expected_body = "#EXTM3U\n#EXT-X-VERSION:3\n"
+    upstream_playlist = "#EXTM3U\n#EXTINF:10,\nsegment0.ts\n#EXTINF:10,\nhttps://video.googlevideo.com/seg1.ts\n"
 
     class FakeResponse:
         status_code = 200
         headers = {"content-type": "application/vnd.apple.mpegurl"}
 
-        def __init__(self, content: str) -> None:
+        def __init__(self, content: str, url: str) -> None:
+            self._text = content
             self.content = content.encode()
+            self.url = url
+
+        @property
+        def text(self) -> str:
+            return self._text
 
     class FakeAsyncClient:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -221,7 +227,7 @@ def test_m3u8_proxy_returns_upstream_content(
 
         async def get(self, url: str) -> FakeResponse:
             self.requested_url = url
-            return FakeResponse(expected_body)
+            return FakeResponse(upstream_playlist, url)
 
     fake_client = FakeAsyncClient()
 
@@ -235,13 +241,83 @@ def test_m3u8_proxy_returns_upstream_content(
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "*"
     assert response.headers["access-control-allow-methods"] == "GET,OPTIONS"
-    assert response.text == expected_body
+    lines = response.text.splitlines()
+    assert lines[0] == "#EXTM3U"
+    assert lines[1] == "#EXTINF:10,"
+    first_segment = lines[2]
+    second_segment = lines[4]
+    assert first_segment.startswith("http://testserver/seg_proxy?url=")
+    assert second_segment.startswith("http://testserver/seg_proxy?url=")
+    parsed_first = urlparse(first_segment)
+    assert parse_qs(parsed_first.query)["url"] == ["https://cdn.example.com/segment0.ts"]
+    parsed_second = urlparse(second_segment)
+    assert parse_qs(parsed_second.query)["url"] == [
+        "https://video.googlevideo.com/seg1.ts"
+    ]
     assert fake_client.requested_url == "https://cdn.example.com/stream.m3u8"
 
 
 def test_m3u8_proxy_options_includes_cors_headers(api: tuple[TestClient, Any]) -> None:
     client, _ = api
     response = client.options("/m3u8_proxy")
+    assert response.status_code == 204
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert response.headers["access-control-allow-methods"] == "GET,OPTIONS"
+
+
+def test_seg_proxy_rejects_non_googlevideo(api: tuple[TestClient, Any]) -> None:
+    client, _ = api
+    response = client.get("/seg_proxy", params={"url": "https://cdn.example.com/seg.ts"})
+    assert response.status_code == 400
+    assert response.headers["access-control-allow-origin"] == "*"
+
+
+def test_seg_proxy_streams_content(
+    api: tuple[TestClient, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, module = api
+    segment_bytes = b"test-segment"
+
+    class FakeResponse:
+        status_code = 200
+        headers = {"content-type": "video/MP2T"}
+
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+            self.text = content.decode()
+            self.url = "https://rr.googlevideo.com/segment"
+
+    class FakeAsyncClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.requested_url: str | None = None
+
+        async def __aenter__(self) -> "FakeAsyncClient":
+            return self
+
+        async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        async def get(self, url: str) -> FakeResponse:
+            self.requested_url = url
+            return FakeResponse(segment_bytes)
+
+    fake_client = FakeAsyncClient()
+    monkeypatch.setattr(module.httpx, "AsyncClient", lambda *args, **kwargs: fake_client)
+
+    response = client.get(
+        "/seg_proxy",
+        params={"url": "https://video.googlevideo.com/seg.ts"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert response.content == segment_bytes
+    assert fake_client.requested_url == "https://video.googlevideo.com/seg.ts"
+
+
+def test_seg_proxy_options_includes_cors_headers(api: tuple[TestClient, Any]) -> None:
+    client, _ = api
+    response = client.options("/seg_proxy")
     assert response.status_code == 204
     assert response.headers["access-control-allow-origin"] == "*"
     assert response.headers["access-control-allow-methods"] == "GET,OPTIONS"
