@@ -2,10 +2,13 @@ import asyncio
 import os
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
+from urllib.parse import urlparse
 
+import httpx
 from asyncache import cached
 from cachetools import TTLCache
 from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi.responses import Response
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from yt_dlp import YoutubeDL
@@ -272,6 +275,36 @@ async def fetch_playlist_info_cached(
     if not result.videos:
         PLAYLIST_INFO_CACHE.pop(playlist_id, None)
     return result
+
+
+@app.get("/m3u8_proxy", summary="Proxy m3u8 playlists", tags=["video"])
+async def proxy_m3u8(url: str) -> Response:
+    if not url.lower().endswith(".m3u8"):
+        raise HTTPException(status_code=400, detail="Query parameter 'url' must end with .m3u8")
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(
+            status_code=400,
+            detail="Query parameter 'url' must be an absolute http(s) URL",
+        )
+
+    try:
+        async with httpx.AsyncClient() as client:
+            upstream_response = await client.get(url)
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="Failed to retrieve m3u8 content") from exc
+
+    if upstream_response.status_code >= 400:
+        raise HTTPException(
+            status_code=upstream_response.status_code,
+            detail="Upstream server responded with an error",
+        )
+
+    media_type = upstream_response.headers.get(
+        "content-type", "application/vnd.apple.mpegurl"
+    )
+    return Response(content=upstream_response.content, media_type=media_type)
 
 
 @app.get("/v1/video/{video_id}", summary="Retrieve video details", tags=["video"])

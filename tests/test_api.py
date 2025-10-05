@@ -172,3 +172,54 @@ def test_playlist_endpoint_returns_summary(api: tuple[TestClient, Any]) -> None:
     assert payload["video_count"] == 2  # duplicates are removed
     assert {video["id"] for video in payload["videos"]} == {"video1", "video2"}
     assert payload["videos"][1]["duration"] == 120
+
+
+def test_m3u8_proxy_validates_extension(api: tuple[TestClient, Any]) -> None:
+    client, _ = api
+    response = client.get(
+        "/m3u8_proxy",
+        params={"url": "https://cdn.example.com/stream.mpd"},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Query parameter 'url' must end with .m3u8"
+
+
+def test_m3u8_proxy_returns_upstream_content(
+    api: tuple[TestClient, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, module = api
+    expected_body = "#EXTM3U\n#EXT-X-VERSION:3\n"
+
+    class FakeResponse:
+        status_code = 200
+        headers = {"content-type": "application/vnd.apple.mpegurl"}
+
+        def __init__(self, content: str) -> None:
+            self.content = content.encode()
+
+    class FakeAsyncClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.requested_url: str | None = None
+
+        async def __aenter__(self) -> "FakeAsyncClient":
+            return self
+
+        async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+            return None
+
+        async def get(self, url: str) -> FakeResponse:
+            self.requested_url = url
+            return FakeResponse(expected_body)
+
+    fake_client = FakeAsyncClient()
+
+    monkeypatch.setattr(module.httpx, "AsyncClient", lambda *args, **kwargs: fake_client)
+
+    response = client.get(
+        "/m3u8_proxy",
+        params={"url": "https://cdn.example.com/stream.m3u8"},
+    )
+
+    assert response.status_code == 200
+    assert response.text == expected_body
+    assert fake_client.requested_url == "https://cdn.example.com/stream.m3u8"
